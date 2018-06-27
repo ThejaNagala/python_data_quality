@@ -1,7 +1,7 @@
 # Data Quality Assessment Scripting
 # Alejandro Malagon
 
-def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, no_num_test = []):
+def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, no_num_test = [], no_alpha_test = []):
     # Arguments
     # dataFrame accepts a pandas DataFrame for which to perform the data quality assessment
     
@@ -13,8 +13,10 @@ def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, n
     # 0 - do not fail a numeric field if it contains negative numbers
     # 1 - fail a numeric field if it contains negative numbers
 
-    # TODO: No numbers test (alphanumeric only)
-    # TODO: No letter test (numeric only)
+    # no_num_test accepts a list of column names
+    # if a list is not populated (default), it will not perform an alphanumeric test
+    # if a list is populated, it will perform an alphanumeric test on selected columns
+
     # TODO: Pair population test (if A is populated, B is populated)
     # TODO: Pair population test (at least one of A, B, ... is populated)
     # TODO: Country validity test
@@ -35,7 +37,9 @@ def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, n
          'Minimum String Length',
          'Maximum String Length',
          'Num. Distinct Values',
-         'Categorical Values'])
+         'Categorical Values',
+         'Alpha Only Test',
+         'Numeric Only Test'])
 
     # Identify columns in DataFrame
     col_list = list(dataFrame.columns.values)
@@ -79,9 +83,9 @@ def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, n
             neg_test_rslt = 'Not Tested'
         elif data_type in ['integer', 'decimal'] and neg_numeric_test == 1 :
             if dataFrame[col][dataFrame[col] < 0].count() == 0 :
-                neg_test_rslt = 'Passed'
+                neg_test_rslt = 'Pass'
             else:
-                neg_test_rslt = 'Failed - ' + str(dataFrame[col][dataFrame[col] < 0].count()) + ' neg. values found.'
+                neg_test_rslt = 'Fail - ' + str(dataFrame[col][dataFrame[col] < 0].count()) + ' neg. values'
         else:
             neg_test_rslt = 'N/A'
 
@@ -107,10 +111,38 @@ def exec_data_quality(dataFrame, max_unique_values = 20, neg_numeric_test = 0, n
         else:
             list_unique_vals = '...'
 
+        # Alpha-Only Test - if current column is in the no_num_test list, test for presence
+        # of any numeric characters. Fail if a numeric character is found; otherwise, pass.
+        # Only test string fields.
+        if len(no_num_test) == 0 or col not in no_num_test :
+            no_num_test_rslt = 'Not Tested'
+        elif col in no_num_test and data_type == 'string' :
+            if dataFrame[col].str.extract(r'([0-9]+)').count().sum() > 0 :
+                no_num_test_rslt = 'Fail - ' + str(dataFrame[col].str.extract(r'([0-9]+)').count().sum()) + ' records'
+            else :
+                no_num_test_rslt = 'Pass'
+        elif col in no_num_test and data_type != 'string' :
+            no_num_test_rslt = 'Non-String Field Skipped'
+
+        # Numeric-Only Test - if current column is in the no_alpha_test list, test for presence
+        # of alphabetic characters. Fail if an alphabetic character is found; otherwise, pass.
+        if len(no_alpha_test) == 0 or col not in no_alpha_test :
+            no_alpha_test_rslt = 'Not Tested'
+        elif col in no_alpha_test and data_type in ['integer', 'float', 'date', 'datetime'] :
+            no_alpha_test_rslt = 'Pass'
+        else :
+            if dataFrame[col].str.extract(r'([A-Za-z]+)').count().sum() > 0:
+                no_alpha_test_rslt = 'Fail - ' + str(dataFrame[col].str.extract(r'([A-Za-z]+)').count().sum()) + ' records'
+            else :
+                no_alpha_test_rslt = 'Pass'
+        
         # Create a DataFrame containing the row
         df_row = pd.DataFrame(
-            [[col, data_type, non_null_cnt, null_cnt, cmplt_pct, numeric_min, numeric_max, neg_test_rslt, min_str_length, max_str_length, num_unique_vals, list_unique_vals]], 
+            [[col, data_type, non_null_cnt, null_cnt, cmplt_pct, numeric_min, numeric_max, neg_test_rslt, min_str_length, max_str_length, num_unique_vals, list_unique_vals,
+              no_num_test_rslt, no_alpha_test_rslt]], 
             columns = list(df_dqa.columns.values))
+
+        # Append row DataFrame to the returned DataFrame
         df_dqa = df_dqa.append(df_row, ignore_index = True)
 
     return df_dqa  
